@@ -1,0 +1,7 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+FFTRegGPU = "86d2b4ce-0b7d-4e3e-98ec-23077478530b"
+
+[sources]
+FFTRegGPU = {path = ".."}
