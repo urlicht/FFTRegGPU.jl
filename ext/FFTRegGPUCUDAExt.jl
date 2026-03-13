@@ -12,10 +12,15 @@ using FFTRegGPU
 using CUDA
 
 import FFTRegGPU: _fft, _ifft, _ifft!, _fftshift, _ifftshift, _scalar_at
+import FFTRegGPU: _plan_fft_inplace, _fft_inplace!
 
 _fft(inp::CUDA.CuArray) = CUDA.CUFFT.fft(inp)
 _ifft(inp::CUDA.CuArray) = CUDA.CUFFT.ifft(inp)
 _ifft!(inp::CUDA.CuArray{<:Complex}) = CUDA.CUFFT.ifft!(inp)
+_plan_fft_inplace(inp::CUDA.CuArray{<:Complex}) = CUDA.CUFFT.plan_fft!(inp)
+_fft_inplace!(inp::CUDA.CuArray{<:Complex}) = CUDA.CUFFT.fft!(inp)
+_fft_inplace!(inp::CUDA.CuArray{<:Complex}, ::Nothing) = CUDA.CUFFT.fft!(inp)
+_fft_inplace!(inp::CUDA.CuArray{<:Complex}, plan) = (plan * inp)
 _fftshift(inp::CUDA.CuArray) = CUDA.CUFFT.fftshift(inp)
 _ifftshift(inp::CUDA.CuArray) = CUDA.CUFFT.ifftshift(inp)
 _scalar_at(inp::CUDA.CuArray, idx) = CUDA.@allowscalar inp[idx]
