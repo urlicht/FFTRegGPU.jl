@@ -133,6 +133,23 @@ using CUDA
 
 CUDA.functional() || error("CUDA is not functional on this machine")
 
+_safe_str(f, default="unknown") = try
+    string(f())
+catch
+    default
+end
+
+function _cuda_info()
+    dev = CUDA.device()
+    (
+        functional = true,
+        device_name = _safe_str(() -> CUDA.name(dev), string(dev)),
+        device_index = _safe_str(() -> CUDA.deviceid(dev)),
+        driver_version = _safe_str(CUDA.driver_version),
+        runtime_version = _safe_str(CUDA.runtime_version),
+    )
+end
+
 function make_base_image(nx::Int, ny::Int, rng::AbstractRNG)
     x = reshape(collect(LinRange(0f0, 1f0, nx)), nx, 1)
     y = reshape(collect(LinRange(0f0, 1f0, ny)), 1, ny)
@@ -176,6 +193,7 @@ function call_reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf, reg_p
 end
 
 rows = NamedTuple[]
+all_buffers_on_cuda = true
 for (i, (nx, ny, nz)) in enumerate(stack_sizes)
     rng = MersenneTwister(seed + 100 + i)
     dims = "$(nx)x$(ny)x$(nz)"
@@ -187,6 +205,14 @@ for (i, (nx, ny, nz)) in enumerate(stack_sizes)
     cc2x = CUDA.zeros(ComplexF32, 2 * nx, 2 * ny)
     nbuf = CUDA.zeros(Float32, nx, ny)
     reg_param = Dict{Int,Any}()
+    all_buffers_on_cuda &= (
+        stack_template isa CUDA.CuArray &&
+        stack_work isa CUDA.CuArray &&
+        img1_f isa CUDA.CuArray &&
+        img2_f isa CUDA.CuArray &&
+        cc2x isa CUDA.CuArray &&
+        nbuf isa CUDA.CuArray
+    )
 
     copyto!(stack_work, stack_template)
     call_reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf, reg_param)
@@ -214,7 +240,14 @@ for (i, (nx, ny, nz)) in enumerate(stack_sizes)
     ))
 end
 
-serialize(result_file, rows)
+serialize(
+    result_file,
+    (
+        rows = rows,
+        cuda_info = _cuda_info(),
+        all_buffers_on_cuda = all_buffers_on_cuda,
+    ),
+)
 """
 
 function write_child_script()
@@ -251,12 +284,40 @@ function run_ref(
     try
         run(cmd)
         commit = chomp(read(`git -C $checkout rev-parse --short HEAD`, String))
-        rows = deserialize(result_file)
-        return (commit=commit, rows=rows)
+        payload = deserialize(result_file)
+        if payload isa NamedTuple && hasproperty(payload, :rows)
+            return (
+                commit = commit,
+                rows = payload.rows,
+                cuda_info = hasproperty(payload, :cuda_info) ? payload.cuda_info : (functional = true,),
+                all_buffers_on_cuda = hasproperty(payload, :all_buffers_on_cuda) ? payload.all_buffers_on_cuda : false,
+            )
+        end
+
+        # Backward compatibility with older payload shape.
+        return (
+            commit = commit,
+            rows = payload,
+            cuda_info = (functional = true,),
+            all_buffers_on_cuda = false,
+        )
     finally
         rm(result_dir; force=true, recursive=true)
         rm(checkout; force=true, recursive=true)
     end
+end
+
+function print_cuda_report(label::String, run_result)
+    info = run_result.cuda_info
+    device_name = hasproperty(info, :device_name) ? info.device_name : "unknown"
+    device_index = hasproperty(info, :device_index) ? info.device_index : "unknown"
+    driver = hasproperty(info, :driver_version) ? info.driver_version : "unknown"
+    runtime = hasproperty(info, :runtime_version) ? info.runtime_version : "unknown"
+    functional = hasproperty(info, :functional) ? info.functional : "unknown"
+    arrays_on_cuda = run_result.all_buffers_on_cuda ? "yes" : "no"
+    pad = repeat(" ", length(label))
+    println("  ", label, ": functional=", functional, ", device=", device_name, " (id=", device_index, ")")
+    println("  ", pad, "  driver=", driver, ", runtime=", runtime, ", arrays_on_cuda=", arrays_on_cuda)
 end
 
 function print_table(curr, prev, current_ref::String, previous_ref::String)
@@ -268,6 +329,9 @@ function print_table(curr, prev, current_ref::String, previous_ref::String)
     println("CUDA reg_stack_translate! comparison")
     println("current:  $(curr.commit) ($current_ref)")
     println("previous: $(prev.commit) ($previous_ref)")
+    println("CUDA verification:")
+    print_cuda_report("current", curr)
+    print_cuda_report("previous", prev)
     println()
 
     @printf("%-14s%14s%14s%12s%12s\n", "dims", "current_ms", "prev_ms", "curr/prev", "delta_%")
