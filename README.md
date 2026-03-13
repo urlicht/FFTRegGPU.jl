@@ -80,9 +80,10 @@ Array(img2_reg_g)
 - Moving targets on the stage can cause shearing in z-stack. To correct this, the images within the stack are registered together.
 - `reg_stack_translate!` is a memory-efficient and convenient function to register the frames in each z-stack. Here in the example, the script loads the z-stack at each time point, registers it, and then saves the registered z-stack.  
 - To ensure this runs on CUDA: make all working arrays `CuArray`, check `CUDA.functional()`, and optionally set `CUDA.allowscalar(false)` to catch accidental scalar fallback.
+- For repeated large host<->device transfers, use a long-lived pinned host buffer (`CUDA.pin`) for better copy throughput.
 ```julia
 size_x, size_y, size_z = 256, 256, 94
-img_stack_reg = zeros(Float32, size_x, size_y, size_z)
+img_stack_h = CUDA.pin(Array{Float32}(undef, size_x, size_y, size_z))
 img_stack_reg_g = CuArray{Float32}(undef, size_x, size_y, size_z)
 img1_f_g = CuArray{Complex{Float32}}(undef, size_x, size_y)
 img2_f_g = CuArray{Complex{Float32}}(undef, size_x, size_y)
@@ -90,10 +91,11 @@ CC2x_g = CuArray{Complex{Float32}}(undef, 2 * size_x, 2 * size_y)
 N_g = CuArray{Float32}(undef, size_x, size_y)
 
 @showprogress for t = 1:100
-    copyto!(img_stack_reg_g, get_zstack(t)) # copy data to GPU
+    get_zstack!(img_stack_h, t) # load data to pinned host buffer
+    copyto!(img_stack_reg_g, img_stack_h) # copy data to GPU
     reg_stack_translate!(img_stack_reg_g, img1_f_g, img2_f_g, CC2x_g, N_g) # register
-    copyto!(img_stack_reg, img_stack_reg_g) # copy result to CPU
-    save_zstack(t, img_stack_reg)
+    copyto!(img_stack_h, img_stack_reg_g) # copy result to CPU
+    save_zstack(t, img_stack_h)
 end
 ```
 
