@@ -36,18 +36,12 @@ using Test
         @test all(isapprox.(shift, zero(eltype(shift)); atol=1f-5))
     end
 
-    @testset "compatibility wrappers" begin
+    @testset "integer shift recovery" begin
         shifted = circshift(img, (3, -2))
         shifted_f = fft(shifted)
-
-        cc1 = similar(img_f)
-        cc2 = similar(img_f)
-        err_ref, shift_ref, phase_ref = dftreg!(img_f, shifted_f, cc1)
-        err_wrap, shift_wrap, phase_wrap = dftreg_gpu!(img_f, shifted_f, cc2)
-
-        @test isapprox(err_ref, err_wrap; atol=1f-6)
-        @test isapprox(phase_ref, phase_wrap; atol=1f-6)
-        @test all(isapprox.(shift_ref, shift_wrap; atol=1f-6))
+        cc = similar(img_f)
+        _, shift, _ = dftreg!(img_f, shifted_f, cc)
+        @test all(isapprox.(shift, Float32[-3, 2]; atol=1f-5))
     end
 
     @testset "resampling API" begin

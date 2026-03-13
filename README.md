@@ -42,7 +42,7 @@ dftreg_resample!(img2_reg_g, img2_f_g, N_g, shift, diffphase)
 Array(img2_reg_g)
 ```
 ### Registering a set of 2D images (subpixel registration)
-Use the function `dftreg_subpix_gpu!`. For the argument `CC2x_g`, the array size should be 2x of the image size.
+Use the function `dftreg_subpix!`. For the argument `CC2x_g`, the array size should be 2x of the image size.
 ```julia
 # allocate GPU memory
 img1_g = CuArray{Float32}(undef, size_x, size_y)
