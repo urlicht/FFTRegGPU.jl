@@ -98,7 +98,34 @@ julia --project=benchmark benchmark/run_benchmarks.jl --backend=both --samples=2
 ```
 
 ### Benchmark results
+Time in ms
 
+| backend | case | dims | median | mean | min | memory | allocs |
+| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
+| cpu | dftreg | 64x64 | 0.090 | 0.115 | 0.088 | 400 | 7 |
+| cpu | dftreg_subpix | 64x64 | 0.864 | 0.860 | 0.631 | 492568 | 263 |
+| cpu | dftreg | 128x128 | 0.326 | 0.342 | 0.313 | 400 | 7 |
+| cpu | dftreg_subpix | 128x128 | 4.465 | 4.393 | 3.797 | 1755928 | 263 |
+| cpu | dftreg | 256x256 | 2.545 | 2.571 | 2.328 | 400 | 7 |
+| cpu | dftreg_subpix | 256x256 | 101.268 | 104.862 | 15.536 | 6640424 | 285 |
+| cpu | dftreg | 512x512 | 11.170 | 11.478 | 10.875 | 400 | 7 |
+| cpu | dftreg_subpix | 512x512 | 198.892 | 194.983 | 67.973 | 25846328 | 295 |
+| cpu | dftreg | 2048x2048 | 276.238 | 277.944 | 272.715 | 400 | 7 |
+| cpu | dftreg_subpix | 2048x2048 | 2555.666 | 2555.666 | 2415.997 | 405360432 | 295 |
+| cpu | reg_stack_translate | 128x128x128 | 868.029 | 861.984 | 828.896 | 290972976 | 41278 |
+| cpu | reg_stack_translate | 256x256x256 | 37213.014 | 37213.014 | 37213.014 | 2233026768 | 88998 |
+| cuda | dftreg | 64x64 | 0.965 | 0.976 | 0.650 | 14816 | 471 |
+| cuda | dftreg_subpix | 64x64 | 2.499 | 2.511 | 2.278 | 127856 | 2397 |
+| cuda | dftreg | 128x128 | 0.371 | 0.389 | 0.341 | 14848 | 472 |
+| cuda | dftreg_subpix | 128x128 | 2.635 | 2.608 | 1.907 | 176448 | 2398 |
+| cuda | dftreg | 256x256 | 0.383 | 0.397 | 0.340 | 14880 | 475 |
+| cuda | dftreg_subpix | 256x256 | 2.741 | 2.738 | 2.082 | 273072 | 2428 |
+| cuda | dftreg | 512x512 | 0.372 | 0.397 | 0.346 | 15184 | 494 |
+| cuda | dftreg_subpix | 512x512 | 3.355 | 3.342 | 2.637 | 467232 | 2564 |
+| cuda | dftreg | 2048x2048 | 2.382 | 2.383 | 1.952 | 22256 | 892 |
+| cuda | dftreg_subpix | 2048x2048 | 13.917 | 13.958 | 12.945 | 1626624 | 2834 |
+| cuda | reg_stack_translate | 128x128x128 | 341.053 | 341.947 | 337.756 | 26691536 | 405533 |
+| cuda | reg_stack_translate | 256x256x256 | 739.277 | 739.101 | 734.337 | 79566528 | 824039 |
 
 ### Configuration
 ```
