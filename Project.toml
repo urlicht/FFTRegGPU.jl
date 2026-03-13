@@ -1,7 +1,7 @@
 name = "FFTRegGPU"
 uuid = "86d2b4ce-0b7d-4e3e-98ec-23077478530b"
 authors = ["Jungsoo Kim <jungsoo@mit.edu>"]
-version = "0.1.0"
+version = "1.0.0"
 
 [deps]
 AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
