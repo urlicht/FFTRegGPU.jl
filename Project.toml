@@ -1,6 +1,6 @@
 name = "FFTRegGPU"
 uuid = "86d2b4ce-0b7d-4e3e-98ec-23077478530b"
-authors = ["Jungsoo Kim <jungsoo@mit.edu>"]
+authors = ["urlicht <urlicht@users.noreply.github.com>"]
 version = "1.0.0"
 
 [deps]
