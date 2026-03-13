@@ -22,6 +22,7 @@ img1_f_g = CuArray{Complex{Float32}}(undef, size_x, size_y)
 img2_f_g = CuArray{Complex{Float32}}(undef, size_x, size_y)
 CC_g = CuArray{Complex{Float32}}(undef, size_x, size_y)
 N_g = CuArray{Float32}(undef, size_x, size_y)
+img2_reg_g = CuArray{Float32}(undef, size_x, size_y)
 
 # copy to GPU
 copyto!(img1_g, Float32.(img1))
@@ -34,8 +35,8 @@ img2_f_g .= fft(img2_g)
 # register (find the optimal translation)
 error, shift, diffphase = dftreg!(img1_f_g, img2_f_g, CC_g)
 
-# resample the moving image
-img2_reg_g = dftreg_resample!(img2_f_g, N_g, shift, diffphase)
+# resample the moving image (in-place)
+dftreg_resample!(img2_reg_g, img2_f_g, N_g, shift, diffphase)
 
 # copy to CPU
 Array(img2_reg_g)
@@ -50,6 +51,7 @@ img1_f_g = CuArray{Complex{Float32}}(undef, size_x, size_y)
 img2_f_g = CuArray{Complex{Float32}}(undef, size_x, size_y)
 CC2x_g = CuArray{Complex{Float32}}(undef, 2 * size_x, 2 * size_y)
 N_g = CuArray{Float32}(undef, size_x, size_y)
+img2_reg_g = CuArray{Float32}(undef, size_x, size_y)
 
 # copy to GPU
 copyto!(img1_g, Float32.(img1))
@@ -62,8 +64,8 @@ img2_f_g .= fft(img2_g)
 # register (find the optimal translation)
 error, shift, diffphase = dftreg_subpix!(img1_f_g, img2_f_g, CC2x_g)
 
-# resample the moving image
-img2_reg_g = dftreg_resample!(img2_f_g, N_g, shift, diffphase)
+# resample the moving image (in-place)
+dftreg_resample!(img2_reg_g, img2_f_g, N_g, shift, diffphase)
 
 # copy to CPU
 Array(img2_reg_g)
