@@ -13,6 +13,11 @@ using FFTW    # CPU backend
 # using CUDA  # CUDA backend
 ```
 
+Backend selection is determined by array type at call time:
+- `CuArray` inputs use the CUDA extension (CUFFT/CUDA kernels).
+- `Array`/`StridedArray` inputs use the CPU extension (FFTW).
+- You can load both `CUDA` and `FFTW`; dispatch still follows the input array types.
+
 ### Registering a set of 2D images
 ```julia
 # allocate GPU memory
@@ -74,6 +79,7 @@ Array(img2_reg_g)
 ### Registering z-stack
 - Moving targets on the stage can cause shearing in z-stack. To correct this, the images within the stack are registered together.
 - `reg_stack_translate!` is a memory-efficient and convenient function to register the frames in each z-stack. Here in the example, the script loads the z-stack at each time point, registers it, and then saves the registered z-stack.  
+- To ensure this runs on CUDA: make all working arrays `CuArray`, check `CUDA.functional()`, and optionally set `CUDA.allowscalar(false)` to catch accidental scalar fallback.
 ```julia
 size_x, size_y, size_z = 256, 256, 94
 img_stack_reg = zeros(Float32, size_x, size_y, size_z)
@@ -86,10 +92,67 @@ N_g = CuArray{Float32}(undef, size_x, size_y)
 @showprogress for t = 1:100
     copyto!(img_stack_reg_g, get_zstack(t)) # copy data to GPU
     reg_stack_translate!(img_stack_reg_g, img1_f_g, img2_f_g, CC2x_g, N_g) # register
-    copyto!(img_stack_reg, img_stack_reg_g) # copy result to GPU
+    copyto!(img_stack_reg, img_stack_reg_g) # copy result to CPU
     save_zstack(t, img_stack_reg)
 end
 ```
+
+### Registering z-stack in batches (CUDA, higher throughput)
+If you have many stacks (`t = 1:nt`), process them in micro-batches to improve GPU utilization and overlap CPU I/O with GPU work.
+
+```julia
+using FFTRegGPU
+using CUDA
+using ProgressMeter
+using Base.Threads
+
+CUDA.functional() || error("CUDA is not functional")
+CUDA.allowscalar(false)
+
+size_x, size_y, size_z = 256, 256, 94
+nt = 100
+B = 4  # micro-batch size; tune 2, 4, 8...
+
+# One independent workspace per batch slot.
+h_in = [CUDA.pin(Array{Float32}(undef, size_x, size_y, size_z)) for _ in 1:B]
+h_out = [CUDA.pin(Array{Float32}(undef, size_x, size_y, size_z)) for _ in 1:B]
+d_stack = [CuArray{Float32}(undef, size_x, size_y, size_z) for _ in 1:B]
+img1_f = [CuArray{ComplexF32}(undef, size_x, size_y) for _ in 1:B]
+img2_f = [CuArray{ComplexF32}(undef, size_x, size_y) for _ in 1:B]
+CC2x = [CuArray{ComplexF32}(undef, 2 * size_x, 2 * size_y) for _ in 1:B]
+N = [CuArray{Float32}(undef, size_x, size_y) for _ in 1:B]
+reg_param = [Dict{Int,Any}() for _ in 1:B]
+
+@showprogress for t0 in 1:B:nt
+    k = min(B, nt - t0 + 1)
+
+    # Load stacks on CPU.
+    @threads for i in 1:k
+        get_zstack!(h_in[i], t0 + i - 1)
+    end
+
+    # Process stacks concurrently on GPU.
+    @sync for i in 1:k
+        @spawn begin
+            empty!(reg_param[i])
+            CUDA.@sync begin
+                copyto!(d_stack[i], h_in[i]) # H2D
+                reg_stack_translate!(d_stack[i], img1_f[i], img2_f[i], CC2x[i], N[i]; reg_param=reg_param[i])
+                copyto!(h_out[i], d_stack[i]) # D2H
+            end
+        end
+    end
+
+    # Save stacks on CPU.
+    @threads for i in 1:k
+        save_zstack(t0 + i - 1, h_out[i])
+    end
+end
+```
+
+Notes:
+- Run Julia with multiple threads (e.g. `julia -t auto`) to benefit from `@threads`/`@spawn`.
+- `B` is the main tuning parameter; increase it until throughput stops improving or GPU memory becomes limiting.
 
 ## Performance
 ### Benchmark command
