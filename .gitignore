@@ -27,3 +27,5 @@ docs/site/
 # environment.
 Manifest.toml
 
+# Benchmark outputs
+benchmark/results/
