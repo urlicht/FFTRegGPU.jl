@@ -1,9 +1,18 @@
 # FFTRegGPU.jl
-Fast FFT GPU registrtion using [phase correlation](https://en.wikipedia.org/wiki/Phase_correlation). This GPU version is based on [SubpixelRegistration.jl](https://github.com/romainFr/SubpixelRegistration.jl)  
+Fast FFT GPU registration using [phase correlation](https://en.wikipedia.org/wiki/Phase_correlation). This GPU version is based on [SubpixelRegistration.jl](https://github.com/romainFr/SubpixelRegistration.jl)  
 Currently it only supports translation.
 
 
 ## Usage and example  
+### Backend setup
+Load FFTRegGPU with the backend package you want to use:
+
+```julia
+using FFTRegGPU
+using FFTW    # CPU backend
+# using CUDA  # CUDA backend
+```
+
 ### Registering a set of 2D images
 ```julia
 # allocate GPU memory
@@ -18,15 +27,15 @@ N_g = CuArray{Float32}(undef, size_x, size_y)
 copyto!(img1_g, Float32.(img1))
 copyto!(img2_g, Float32.(img2))
 
-# perform FFT using CUFFT
-img1_f_g .= CUFFT.fft(img1_g)
-img2_f_g .= CUFFT.fft(img2_g)
+# perform FFT using the active backend
+img1_f_g .= fft(img1_g)
+img2_f_g .= fft(img2_g)
 
 # register (find the optimal translation)
-error, shift, diffphase = dftreg_gpu!(img1_f_g, img2_f_g, CC_g)
+error, shift, diffphase = dftreg!(img1_f_g, img2_f_g, CC_g)
 
 # resample the moving image
-img2_reg_g = dftreg_resample_gpu!(img1_f_g, N_g, shift, diffphase)
+img2_reg_g = dftreg_resample!(img2_f_g, N_g, shift, diffphase)
 
 # copy to CPU
 Array(img2_reg_g)
@@ -46,15 +55,15 @@ N_g = CuArray{Float32}(undef, size_x, size_y)
 copyto!(img1_g, Float32.(img1))
 copyto!(img2_g, Float32.(img2))
 
-# perform FFT using CUFFT
-img1_f_g .= CUFFT.fft(img1_g)
-img2_f_g .= CUFFT.fft(img2_g)
+# perform FFT using the active backend
+img1_f_g .= fft(img1_g)
+img2_f_g .= fft(img2_g)
 
 # register (find the optimal translation)
-error, shift, diffphase = dftreg_subpix_gpu!(img1_f_g, img2_f_g, CC2x_g)
+error, shift, diffphase = dftreg_subpix!(img1_f_g, img2_f_g, CC2x_g)
 
 # resample the moving image
-img2_reg_g = dftreg_resample_gpu!(img1_f_g, N_g, shift, diffphase)
+img2_reg_g = dftreg_resample!(img2_f_g, N_g, shift, diffphase)
 
 # copy to CPU
 Array(img2_reg_g)
