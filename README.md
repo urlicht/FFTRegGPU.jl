@@ -92,14 +92,43 @@ end
 ```
 
 ## Performance
-Measured time to call `reg_stack_translate!`  
-Hardware: GTX 1080  
-Julia v1.5.3 and CUDA.jl v.2.4.1
+### Benchmark command
+```bash
+julia --project=benchmark benchmark/run_benchmarks.jl --backend=both --samples=20 --sizes=64x64,128x128,256x256,512x512,2048x2048 --stack=128x128x128,256x256x256 --output=benchmark/results/both.csv
+```
 
-| size (x,y,z) | mean time (ms) |
-| - | - |
-| 32,32,32 | 43.817 ms |
-| 64,64,64 | 91.215 ms |
-| 128,128,64 | 103.022 ms |
-| 256,256,64 | 131.046 ms |
-| 256,256,256 | 525.257 ms |
+### Benchmark results
+
+
+### Configuration
+```
+CUDA toolchain: 
+- runtime 12.9, artifact installation
+- driver 550.107.2 for 12.4
+- compiler 12.9
+
+CUDA libraries: 
+- CUBLAS: 12.9.1
+- CURAND: 10.3.10
+- CUFFT: 11.4.1
+- CUSOLVER: 11.7.5
+- CUSPARSE: 12.5.10
+- CUPTI: 2025.2.1 (API 12.9.1)
+- NVML: 12.0.0+550.107.2
+
+Julia packages: 
+- CUDA: 5.10.1
+- GPUArrays: 11.4.1
+- GPUCompiler: 1.8.2
+- KernelAbstractions: 0.9.40
+- CUDA_Driver_jll: 13.2.0+0
+- CUDA_Compiler_jll: 0.4.2+0
+- CUDA_Runtime_jll: 0.20.1+0
+
+Toolchain:
+- Julia: 1.12.5
+- LLVM: 18.1.7
+
+1 device:
+  0: NVIDIA GeForce RTX 3060 (sm_86, 11.752 GiB / 12.000 GiB available)
+```
