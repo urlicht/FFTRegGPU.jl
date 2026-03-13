@@ -1,4 +1,6 @@
 # FFTRegGPU.jl
+[![CI](https://github.com/urlicht/FFTRegGPU.jl/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/urlicht/FFTRegGPU.jl/actions/workflows/ci.yml)
+
 Fast FFT GPU registration using [phase correlation](https://en.wikipedia.org/wiki/Phase_correlation). This GPU version is based on [SubpixelRegistration.jl](https://github.com/romainFr/SubpixelRegistration.jl)  
 Currently it only supports translation.
 
