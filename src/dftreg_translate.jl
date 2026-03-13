@@ -2,6 +2,9 @@
     _fft(inp)
     _ifft(inp)
     _ifft!(inp)
+    _plan_fft_inplace(inp)
+    _fft_inplace!(inp)
+    _fft_inplace!(inp, plan)
     _fftshift(inp)
     _ifftshift(inp)
 
@@ -14,6 +17,10 @@ the input array type.
 _fft(inp::AbstractArray) = fft(inp)
 _ifft(inp::AbstractArray) = ifft(inp)
 _ifft!(inp::AbstractArray) = copyto!(inp, _ifft(inp))
+_plan_fft_inplace(inp::AbstractArray{<:Complex}) = nothing
+_fft_inplace!(inp::AbstractArray{<:Complex}) = copyto!(inp, _fft(inp))
+_fft_inplace!(inp::AbstractArray{<:Complex}, ::Nothing) = _fft_inplace!(inp)
+_fft_inplace!(inp::AbstractArray{<:Complex}, plan) = _fft_inplace!(inp)
 _fftshift(inp::AbstractArray) = fftshift(inp)
 _ifftshift(inp::AbstractArray) = ifftshift(inp)
 
@@ -383,6 +390,9 @@ The operation is in-place on `img_stack_reg`. `img1_f`, `img2_f`, `CC2x`, and
 - `CC2x`: coarse cross-correlation buffer (2x in each planar dimension)
 - `N`: real phase-ramp scratch buffer
 
+Forward FFTs are executed in-place on `img1_f`/`img2_f`; when supported by the
+active backend (for example FFTW), plans are reused across all z-planes.
+
 If `reg_param[z]` exists, it must contain `(error, shift, diffphase)` and is
 reused instead of recomputing registration for plane `z`. Otherwise the tuple is
 computed and stored.
@@ -399,13 +409,17 @@ function reg_stack_translate!(
     CC2x .= zero(eltype(CC2x))
     N .= zero(eltype(N))
     cc2x_abs2_work = similar(CC2x, float(real(eltype(CC2x))))
+    fft_plan1 = _plan_fft_inplace(img1_f)
+    fft_plan2 = _plan_fft_inplace(img2_f)
 
     for z = 2:size_z
         z1, z2 = z - 1, z
         img1 = view(img_stack_reg, :, :, z1)
         img2 = view(img_stack_reg, :, :, z2)
-        img1_f .= _fft(img1)
-        img2_f .= _fft(img2)
+        img1_f .= img1
+        _fft_inplace!(img1_f, fft_plan1)
+        img2_f .= img2
+        _fft_inplace!(img2_f, fft_plan2)
 
         if !haskey(reg_param, z)
             error, shift, diffphase = dftreg_subpix!(img1_f, img2_f, CC2x; cc2x_abs2_work=cc2x_abs2_work)
