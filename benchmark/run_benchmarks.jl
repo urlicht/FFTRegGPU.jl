@@ -216,8 +216,10 @@ function maybe_load_cuda()
     Base.find_package("CUDA") === nothing && return nothing
     try
         @eval using CUDA
-        CUDA.functional() || return nothing
-        CUDA
+        # `@eval using CUDA` inside a function can create a newer-world binding.
+        cuda = Base.invokelatest(() -> getfield(@__MODULE__, :CUDA))
+        Base.invokelatest(cuda.functional) || return nothing
+        cuda
     catch
         nothing
     end
