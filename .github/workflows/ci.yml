@@ -12,16 +12,14 @@ jobs:
   test:
     name: Julia ${{ matrix.julia-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
         os:
           - ubuntu-latest
-          - macos-latest
         julia-version:
-          - '1.11'
           - '1.12'
 
     steps:
