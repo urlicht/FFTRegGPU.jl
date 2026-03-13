@@ -57,7 +57,7 @@ function dftreg!(
     @. CC = img1_f * conj(img2_f)
     _ifft!(CC)
 
-    _, loc = findmax(abs, CC)
+    _, loc = findmax(abs2.(CC))
     CCmax = _scalar_at(CC, loc)
     rfzero = sum(abs2, img1_f) / L
     rgzero = sum(abs2, img2_f) / L
@@ -105,7 +105,7 @@ function dftreg_subpix!(
     # compute cross-correlation and locate the peak
     copyto!(CC2x, _ifftshift(CC2x))
     _ifft!(CC2x)
-    _, loc = findmax(abs, CC2x)
+    _, loc = findmax(abs2.(CC2x))
 
     indi = size(CC2x)
     locI = collect(Tuple(loc))
@@ -137,7 +137,7 @@ function dftreg_subpix!(
             dft_shift .- shift .* up,
         ) / denom
 
-        _, loc = findmax(abs, CC_refine)
+        _, loc = findmax(abs2.(CC_refine))
         locI_ref = Treal.(Tuple(loc))
         CC_refine_max = _scalar_at(CC_refine, loc)
         shift = shift .+ (locI_ref .- dft_shift .- one(Treal)) ./ up
