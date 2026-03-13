@@ -175,15 +175,19 @@ function run_cpu_benchmarks(cfg::BenchConfig, rows)
 
         img1_f, img2_f = make_integer_pair(nx, ny, rng, cfg.noise_sigma)
         cc = similar(img1_f)
-        dftreg!(img1_f, img2_f, cc) # warmup
-        trial = run(@benchmarkable dftreg!($img1_f, $img2_f, $cc) samples=cfg.samples evals=cfg.evals)
+        cc_abs2_work = similar(cc, float(real(eltype(cc))))
+        dftreg!(img1_f, img2_f, cc; cc_abs2_work=cc_abs2_work) # warmup
+        trial = run(
+            @benchmarkable dftreg!($img1_f, $img2_f, $cc; cc_abs2_work=$cc_abs2_work) samples=cfg.samples evals=cfg.evals
+        )
         push_summary!(rows, "cpu", "dftreg", dims, cfg, trial)
 
         img1_f_sub, img2_f_sub = make_subpixel_pair(nx, ny, rng, cfg.noise_sigma)
         cc2x = zeros(eltype(img1_f_sub), 2 * nx, 2 * ny)
-        dftreg_subpix!(img1_f_sub, img2_f_sub, cc2x) # warmup
+        cc2x_abs2_work = similar(cc2x, float(real(eltype(cc2x))))
+        dftreg_subpix!(img1_f_sub, img2_f_sub, cc2x; cc2x_abs2_work=cc2x_abs2_work) # warmup
         trial = run(
-            @benchmarkable dftreg_subpix!($img1_f_sub, $img2_f_sub, $cc2x) samples=cfg.samples evals=cfg.evals
+            @benchmarkable dftreg_subpix!($img1_f_sub, $img2_f_sub, $cc2x; cc2x_abs2_work=$cc2x_abs2_work) samples=cfg.samples evals=cfg.evals
         )
         push_summary!(rows, "cpu", "dftreg_subpix", dims, cfg, trial)
     end
@@ -244,12 +248,13 @@ function _run_cuda_benchmarks_loaded(CUDA, cfg::BenchConfig, rows)
         img1_f = CUDA.CuArray(img1_f_cpu)
         img2_f = CUDA.CuArray(img2_f_cpu)
         cc = similar(img1_f)
+        cc_abs2_work = similar(cc, float(real(eltype(cc))))
 
-        dftreg!(img1_f, img2_f, cc) # warmup
+        dftreg!(img1_f, img2_f, cc; cc_abs2_work=cc_abs2_work) # warmup
         CUDA.synchronize()
         trial = run(
             @benchmarkable begin
-                dftreg!($img1_f, $img2_f, $cc)
+                dftreg!($img1_f, $img2_f, $cc; cc_abs2_work=$cc_abs2_work)
                 CUDA.synchronize()
             end samples=cfg.samples evals=cfg.evals
         )
@@ -259,12 +264,13 @@ function _run_cuda_benchmarks_loaded(CUDA, cfg::BenchConfig, rows)
         img1_f_sub = CUDA.CuArray(img1_f_sub_cpu)
         img2_f_sub = CUDA.CuArray(img2_f_sub_cpu)
         cc2x = CUDA.zeros(eltype(img1_f_sub), 2 * nx, 2 * ny)
+        cc2x_abs2_work = similar(cc2x, float(real(eltype(cc2x))))
 
-        dftreg_subpix!(img1_f_sub, img2_f_sub, cc2x) # warmup
+        dftreg_subpix!(img1_f_sub, img2_f_sub, cc2x; cc2x_abs2_work=cc2x_abs2_work) # warmup
         CUDA.synchronize()
         trial = run(
             @benchmarkable begin
-                dftreg_subpix!($img1_f_sub, $img2_f_sub, $cc2x)
+                dftreg_subpix!($img1_f_sub, $img2_f_sub, $cc2x; cc2x_abs2_work=$cc2x_abs2_work)
                 CUDA.synchronize()
             end samples=cfg.samples evals=cfg.evals
         )

@@ -17,6 +17,18 @@ function _to_backend(ref::AbstractArray, src::AbstractArray)
     out
 end
 
+function _findmax_abs2_loc(inp::AbstractArray{<:Complex}, work::Union{Nothing,AbstractArray{<:Real}}=nothing)
+    if work === nothing
+        _, loc = findmax(abs2.(inp))
+        return loc
+    end
+
+    size(work) == size(inp) || throw(DimensionMismatch("work must have the same size as input"))
+    @. work = abs2(inp)
+    _, loc = findmax(work)
+    loc
+end
+
 function dftups(inp::AbstractArray{T,N}, no::Integer, usfac::Int=1, offset=nothing) where {T<:Number,N}
     no > 0 || throw(ArgumentError("no must be positive"))
     usfac > 0 || throw(ArgumentError("usfac must be positive"))
@@ -47,6 +59,8 @@ function dftreg!(
     img1_f::AbstractMatrix{T1},
     img2_f::AbstractMatrix{T2},
     CC::AbstractMatrix{TC},
+    ;
+    cc_abs2_work::Union{Nothing,AbstractMatrix{<:Real}}=nothing,
 ) where {T1<:Complex,T2<:Complex,TC<:Complex}
     size(img1_f) == size(img2_f) || throw(DimensionMismatch("img1_f and img2_f must have the same size"))
     size(img1_f) == size(CC) || throw(DimensionMismatch("CC must have the same size as img1_f"))
@@ -57,7 +71,7 @@ function dftreg!(
     @. CC = img1_f * conj(img2_f)
     _ifft!(CC)
 
-    _, loc = findmax(abs2.(CC))
+    loc = _findmax_abs2_loc(CC, cc_abs2_work)
     CCmax = _scalar_at(CC, loc)
     rfzero = sum(abs2, img1_f) / L
     rgzero = sum(abs2, img2_f) / L
@@ -85,6 +99,8 @@ function dftreg_subpix!(
     img2_f::AbstractMatrix{T2},
     CC2x::AbstractMatrix{TC},
     up_fac::Int=10,
+    ;
+    cc2x_abs2_work::Union{Nothing,AbstractMatrix{<:Real}}=nothing,
 ) where {T1<:Complex,T2<:Complex,TC<:Complex}
     size(img1_f) == size(img2_f) || throw(DimensionMismatch("img1_f and img2_f must have the same size"))
     up_fac > 0 || throw(ArgumentError("up_fac must be positive"))
@@ -105,7 +121,7 @@ function dftreg_subpix!(
     # compute cross-correlation and locate the peak
     copyto!(CC2x, _ifftshift(CC2x))
     _ifft!(CC2x)
-    _, loc = findmax(abs2.(CC2x))
+    loc = _findmax_abs2_loc(CC2x, cc2x_abs2_work)
 
     indi = size(CC2x)
     locI = collect(Tuple(loc))
@@ -137,7 +153,7 @@ function dftreg_subpix!(
             dft_shift .- shift .* up,
         ) / denom
 
-        _, loc = findmax(abs2.(CC_refine))
+        loc = _findmax_abs2_loc(CC_refine)
         locI_ref = Treal.(Tuple(loc))
         CC_refine_max = _scalar_at(CC_refine, loc)
         shift = shift .+ (locI_ref .- dft_shift .- one(Treal)) ./ up
@@ -247,6 +263,7 @@ function reg_stack_translate!(
     _, _, size_z = size(img_stack_reg)
     CC2x .= zero(eltype(CC2x))
     N .= zero(eltype(N))
+    cc2x_abs2_work = similar(CC2x, float(real(eltype(CC2x))))
 
     for z = 2:size_z
         z1, z2 = z - 1, z
@@ -256,7 +273,7 @@ function reg_stack_translate!(
         img2_f .= _fft(img2)
 
         if !haskey(reg_param, z)
-            error, shift, diffphase = dftreg_subpix!(img1_f, img2_f, CC2x)
+            error, shift, diffphase = dftreg_subpix!(img1_f, img2_f, CC2x; cc2x_abs2_work=cc2x_abs2_work)
             reg_param[z] = (error, shift, diffphase)
         else
             error, shift, diffphase = reg_param[z]
