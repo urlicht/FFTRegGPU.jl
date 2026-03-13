@@ -12,7 +12,7 @@ struct BenchConfig
     evals::Int
     seed::Int
     sizes::Vector{Tuple{Int,Int}}
-    stack_size::NTuple{3,Int}
+    stack_sizes::Vector{NTuple{3,Int}}
     noise_sigma::Float32
     output::Union{Nothing,String}
 end
@@ -33,6 +33,10 @@ function parse_sizes(token::AbstractString)
     [parse_dim2(s) for s in split(token, ",")]
 end
 
+function parse_stack_sizes(token::AbstractString)
+    [parse_dim3(s) for s in split(token, ",")]
+end
+
 function parse_backend(token::AbstractString)
     b = Symbol(lowercase(strip(token)))
     b in (:cpu, :cuda, :both) || error("backend must be cpu, cuda, or both")
@@ -46,7 +50,7 @@ function parse_args(args::Vector{String})
         :evals => 1,
         :seed => DEFAULT_SEED,
         :sizes => [(128, 128), (256, 256)],
-        :stack_size => (256, 256, 64),
+        :stack_sizes => [(256, 256, 64)],
         :noise_sigma => 0.02f0,
         :output => nothing,
     )
@@ -63,7 +67,8 @@ Options:
   --evals=N                    BenchmarkTools evals per sample. Default: 1
   --seed=N                     RNG seed for synthetic data. Default: $(DEFAULT_SEED)
   --sizes=128x128,256x256      2D pair benchmark sizes. Default: 128x128,256x256
-  --stack=256x256x64           3D stack benchmark size. Default: 256x256x64
+  --stack=256x256x64,256x256x96
+                               3D stack benchmark sizes. Default: 256x256x64
   --noise=0.02                 Added Gaussian noise sigma. Default: 0.02
   --output=PATH                Optional CSV output path.
 """)
@@ -79,7 +84,7 @@ Options:
         elseif startswith(arg, "--sizes=")
             cfg[:sizes] = parse_sizes(split(arg, "=", limit=2)[2])
         elseif startswith(arg, "--stack=")
-            cfg[:stack_size] = parse_dim3(split(arg, "=", limit=2)[2])
+            cfg[:stack_sizes] = parse_stack_sizes(split(arg, "=", limit=2)[2])
         elseif startswith(arg, "--noise=")
             cfg[:noise_sigma] = Float32(parse(Float64, split(arg, "=", limit=2)[2]))
         elseif startswith(arg, "--output=")
@@ -91,6 +96,7 @@ Options:
 
     cfg[:samples] > 0 || error("samples must be positive")
     cfg[:evals] > 0 || error("evals must be positive")
+    isempty(cfg[:stack_sizes]) && error("stack must include at least one size")
 
     BenchConfig(
         cfg[:backend],
@@ -98,7 +104,7 @@ Options:
         cfg[:evals],
         cfg[:seed],
         cfg[:sizes],
-        cfg[:stack_size],
+        cfg[:stack_sizes],
         cfg[:noise_sigma],
         cfg[:output],
     )
@@ -192,28 +198,29 @@ function run_cpu_benchmarks(cfg::BenchConfig, rows)
         push_summary!(rows, "cpu", "dftreg_subpix", dims, cfg, trial)
     end
 
-    nx, ny, nz = cfg.stack_size
-    rng = MersenneTwister(cfg.seed + 100)
-    dims = "$(nx)x$(ny)x$(nz)"
-    stack_template = make_stack(nx, ny, nz, rng, cfg.noise_sigma)
-    stack_work = similar(stack_template)
-    img1_f = zeros(ComplexF32, nx, ny)
-    img2_f = zeros(ComplexF32, nx, ny)
-    cc2x = zeros(ComplexF32, 2 * nx, 2 * ny)
-    nbuf = zeros(Float32, nx, ny)
-    reg_param = Dict{Int,Any}()
+    for (i, (nx, ny, nz)) in enumerate(cfg.stack_sizes)
+        rng = MersenneTwister(cfg.seed + 100 + i)
+        dims = "$(nx)x$(ny)x$(nz)"
+        stack_template = make_stack(nx, ny, nz, rng, cfg.noise_sigma)
+        stack_work = similar(stack_template)
+        img1_f = zeros(ComplexF32, nx, ny)
+        img2_f = zeros(ComplexF32, nx, ny)
+        cc2x = zeros(ComplexF32, 2 * nx, 2 * ny)
+        nbuf = zeros(Float32, nx, ny)
+        reg_param = Dict{Int,Any}()
 
-    copyto!(stack_work, stack_template)
-    reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf; reg_param=reg_param) # warmup
+        copyto!(stack_work, stack_template)
+        reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf; reg_param=reg_param) # warmup
 
-    trial = run(
-        @benchmarkable begin
-            copyto!($stack_work, $stack_template)
-            empty!($reg_param)
-            reg_stack_translate!($stack_work, $img1_f, $img2_f, $cc2x, $nbuf; reg_param=$reg_param)
-        end samples=cfg.samples evals=1
-    )
-    push_summary!(rows, "cpu", "reg_stack_translate", dims, cfg, trial)
+        trial = run(
+            @benchmarkable begin
+                copyto!($stack_work, $stack_template)
+                empty!($reg_param)
+                reg_stack_translate!($stack_work, $img1_f, $img2_f, $cc2x, $nbuf; reg_param=$reg_param)
+            end samples=cfg.samples evals=1
+        )
+        push_summary!(rows, "cpu", "reg_stack_translate", dims, cfg, trial)
+    end
 end
 
 function maybe_load_cuda()
@@ -277,30 +284,31 @@ function _run_cuda_benchmarks_loaded(CUDA, cfg::BenchConfig, rows)
         push_summary!(rows, "cuda", "dftreg_subpix", dims, cfg, trial)
     end
 
-    nx, ny, nz = cfg.stack_size
-    rng = MersenneTwister(cfg.seed + 100)
-    dims = "$(nx)x$(ny)x$(nz)"
-    stack_template = CUDA.CuArray(make_stack(nx, ny, nz, rng, cfg.noise_sigma))
-    stack_work = similar(stack_template)
-    img1_f = CUDA.zeros(ComplexF32, nx, ny)
-    img2_f = CUDA.zeros(ComplexF32, nx, ny)
-    cc2x = CUDA.zeros(ComplexF32, 2 * nx, 2 * ny)
-    nbuf = CUDA.zeros(Float32, nx, ny)
-    reg_param = Dict{Int,Any}()
+    for (i, (nx, ny, nz)) in enumerate(cfg.stack_sizes)
+        rng = MersenneTwister(cfg.seed + 100 + i)
+        dims = "$(nx)x$(ny)x$(nz)"
+        stack_template = CUDA.CuArray(make_stack(nx, ny, nz, rng, cfg.noise_sigma))
+        stack_work = similar(stack_template)
+        img1_f = CUDA.zeros(ComplexF32, nx, ny)
+        img2_f = CUDA.zeros(ComplexF32, nx, ny)
+        cc2x = CUDA.zeros(ComplexF32, 2 * nx, 2 * ny)
+        nbuf = CUDA.zeros(Float32, nx, ny)
+        reg_param = Dict{Int,Any}()
 
-    copyto!(stack_work, stack_template)
-    reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf; reg_param=reg_param) # warmup
-    CUDA.synchronize()
+        copyto!(stack_work, stack_template)
+        reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf; reg_param=reg_param) # warmup
+        CUDA.synchronize()
 
-    trial = run(
-        @benchmarkable begin
-            copyto!($stack_work, $stack_template)
-            empty!($reg_param)
-            reg_stack_translate!($stack_work, $img1_f, $img2_f, $cc2x, $nbuf; reg_param=$reg_param)
-            CUDA.synchronize()
-        end samples=cfg.samples evals=1
-    )
-    push_summary!(rows, "cuda", "reg_stack_translate", dims, cfg, trial)
+        trial = run(
+            @benchmarkable begin
+                copyto!($stack_work, $stack_template)
+                empty!($reg_param)
+                reg_stack_translate!($stack_work, $img1_f, $img2_f, $cc2x, $nbuf; reg_param=$reg_param)
+                CUDA.synchronize()
+            end samples=cfg.samples evals=1
+        )
+        push_summary!(rows, "cuda", "reg_stack_translate", dims, cfg, trial)
+    end
 end
 
 function print_rows(rows)
@@ -356,7 +364,7 @@ function main()
     println("  evals:     ", cfg.evals)
     println("  seed:      ", cfg.seed)
     println("  sizes:     ", join(["$(x)x$(y)" for (x, y) in cfg.sizes], ", "))
-    println("  stack:     ", "$(cfg.stack_size[1])x$(cfg.stack_size[2])x$(cfg.stack_size[3])")
+    println("  stack:     ", join(["$(x)x$(y)x$(z)" for (x, y, z) in cfg.stack_sizes], ", "))
     println("  noise:     ", cfg.noise_sigma)
 
     if cfg.backend in (:cpu, :both)
