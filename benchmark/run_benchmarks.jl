@@ -232,7 +232,10 @@ function run_cuda_benchmarks(cfg::BenchConfig, rows)
         return
     end
     println("Running CUDA benchmarks...")
+    Base.invokelatest(_run_cuda_benchmarks_loaded, CUDA, cfg, rows)
+end
 
+function _run_cuda_benchmarks_loaded(CUDA, cfg::BenchConfig, rows)
     for (i, (nx, ny)) in enumerate(cfg.sizes)
         rng = MersenneTwister(cfg.seed + i)
         dims = "$(nx)x$(ny)"
