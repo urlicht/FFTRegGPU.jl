@@ -200,32 +200,32 @@ Time in ms
 ### Configuration
 ```
 CUDA toolchain: 
-- runtime 12.9, artifact installation
-- driver 550.107.2 for 12.4
-- compiler 12.9
+- runtime 13.2, artifact installation
+- driver 570.181.0 for 13.2
+- compiler 13.2
 
 CUDA libraries: 
-- CUBLAS: 12.9.1
-- CURAND: 10.3.10
-- CUFFT: 11.4.1
-- CUSOLVER: 11.7.5
-- CUSPARSE: 12.5.10
-- CUPTI: 2025.2.1 (API 12.9.1)
-- NVML: 12.0.0+550.107.2
+- CUBLAS: 13.3.0
+- CURAND: 10.4.2
+- CUFFT: 12.2.0
+- CUSOLVER: 12.1.0
+- CUSPARSE: 12.7.9
+- CUPTI: 2026.1.0 (API 13.2.0)
+- NVML: 12.0.0+570.181
 
 Julia packages: 
-- CUDA: 5.10.1
+- CUDA: 5.11.0
 - GPUArrays: 11.4.1
 - GPUCompiler: 1.8.2
 - KernelAbstractions: 0.9.40
 - CUDA_Driver_jll: 13.2.0+0
 - CUDA_Compiler_jll: 0.4.2+0
-- CUDA_Runtime_jll: 0.20.1+0
+- CUDA_Runtime_jll: 0.21.0+0
 
 Toolchain:
 - Julia: 1.12.5
 - LLVM: 18.1.7
 
 1 device:
-  0: NVIDIA GeForce RTX 3060 (sm_86, 11.752 GiB / 12.000 GiB available)
+  0: NVIDIA GeForce RTX 4060 Ti (sm_89, 15.581 GiB / 15.996 GiB available)
 ```
