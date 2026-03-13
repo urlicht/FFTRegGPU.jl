@@ -66,4 +66,27 @@ using Test
         @test ret2 === phase_shifted
         @test phase_shifted ≈ moved_f atol = 1f-6
     end
+
+    @testset "2x cross-power embedding matches shift pipeline" begin
+        for (mx, my) in ((6, 4), (5, 7))
+            a = rand(rng, Float32, mx, my)
+            b = rand(rng, Float32, mx, my)
+            a_f = fft(a)
+            b_f = fft(b)
+
+            cc_new = zeros(ComplexF32, 2 * mx, 2 * my)
+            cc_ref = similar(cc_new)
+
+            FFTRegGPU._embed_crosspower_2x!(cc_new, a_f, b_f)
+
+            ranges = [(x + 1 - div(x, 2)):(x + 1 + div(x - 1, 2)) for x in size(a_f)]
+            cc_ref .= 0
+            a_shift = FFTRegGPU._fftshift(a_f)
+            b_shift = FFTRegGPU._fftshift(b_f)
+            @views @. cc_ref[ranges...] = a_shift * conj(b_shift)
+            copyto!(cc_ref, FFTRegGPU._ifftshift(cc_ref))
+
+            @test cc_new == cc_ref
+        end
+    end
 end

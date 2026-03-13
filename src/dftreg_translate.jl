@@ -171,6 +171,51 @@ function dftreg!(
 end
 
 """
+    _embed_crosspower_2x!(CC2x, img1_f, img2_f) -> CC2x
+
+Write the 2x zero-padded cross-power spectrum directly in native FFT order.
+
+This is equivalent to constructing `fftshift(img1_f) .* conj.(fftshift(img2_f))`
+in the centered region of `CC2x` and then applying `ifftshift(CC2x)`, but avoids
+materializing the shifted arrays.
+"""
+function _embed_crosspower_2x!(
+    CC2x::AbstractMatrix{TC},
+    img1_f::AbstractMatrix{T1},
+    img2_f::AbstractMatrix{T2},
+) where {TC<:Complex,T1<:Complex,T2<:Complex}
+    size(img1_f) == size(img2_f) || throw(DimensionMismatch("img1_f and img2_f must have the same size"))
+    m, n = size(img1_f)
+    expected_cc_size = (2m, 2n)
+    size(CC2x) == expected_cc_size ||
+        throw(DimensionMismatch("CC2x must have size $(expected_cc_size), got $(size(CC2x))"))
+
+    fill!(CC2x, zero(TC))
+
+    h1, t1 = cld(m, 2), fld(m, 2)
+    h2, t2 = cld(n, 2), fld(n, 2)
+
+    in1_h, in1_t = 1:h1, (h1 + 1):m
+    in2_h, in2_t = 1:h2, (h2 + 1):n
+    out1_h, out1_t = 1:h1, (2m - t1 + 1):(2m)
+    out2_h, out2_t = 1:h2, (2n - t2 + 1):(2n)
+
+    @views @. CC2x[out1_h, out2_h] = img1_f[in1_h, in2_h] * conj(img2_f[in1_h, in2_h])
+
+    if t2 > 0
+        @views @. CC2x[out1_h, out2_t] = img1_f[in1_h, in2_t] * conj(img2_f[in1_h, in2_t])
+    end
+    if t1 > 0
+        @views @. CC2x[out1_t, out2_h] = img1_f[in1_t, in2_h] * conj(img2_f[in1_t, in2_h])
+    end
+    if t1 > 0 && t2 > 0
+        @views @. CC2x[out1_t, out2_t] = img1_f[in1_t, in2_t] * conj(img2_f[in1_t, in2_t])
+    end
+
+    CC2x
+end
+
+"""
     dftreg_subpix!(img1_f, img2_f, CC2x, up_fac=10; cc2x_abs2_work=nothing)
         -> (error, shift, diffphase)
 
@@ -197,18 +242,13 @@ function dftreg_subpix!(
 
     # initial estimate by 2x upsample
     dim_input = size(img1_f)
-    ranges = [(x + 1 - div(x, 2)):(x + 1 + div(x - 1, 2)) for x in dim_input]
     expected_cc_size = ntuple(i -> 2 * dim_input[i], length(dim_input))
     size(CC2x) == expected_cc_size ||
         throw(DimensionMismatch("CC2x must have size $(expected_cc_size), got $(size(CC2x))"))
 
-    CC2x .= zero(eltype(CC2x))
-    img1_shift = _fftshift(img1_f)
-    img2_shift = _fftshift(img2_f)
-    @views @. CC2x[ranges...] = img1_shift * conj(img2_shift)
+    _embed_crosspower_2x!(CC2x, img1_f, img2_f)
 
     # compute cross-correlation and locate the peak
-    copyto!(CC2x, _ifftshift(CC2x))
     _ifft!(CC2x)
     loc = _findmax_abs2_loc(CC2x, cc2x_abs2_work)
 
