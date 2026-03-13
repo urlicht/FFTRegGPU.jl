@@ -6,6 +6,7 @@ include("dftreg_translate.jl")
 export dftreg!,
     dftreg_subpix!,
     subpix_shift!,
+    dftreg_resample,
     dftreg_resample!,
     reg_stack_translate!,
     dftreg_gpu!,
@@ -17,6 +18,7 @@ export dftreg!,
 dftreg_gpu!(args...) = dftreg!(args...)
 dftreg_subpix_gpu!(args...) = dftreg_subpix!(args...)
 subpix_shift_gpu!(args...) = subpix_shift!(args...)
-dftreg_resample_gpu!(args...) = dftreg_resample!(args...)
+dftreg_resample_gpu(args...; kwargs...) = dftreg_resample(args...; kwargs...)
+dftreg_resample_gpu!(args...; kwargs...) = dftreg_resample!(args...; kwargs...)
 
 end # module
