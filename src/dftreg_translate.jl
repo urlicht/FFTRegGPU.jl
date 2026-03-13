@@ -1,15 +1,52 @@
+"""
+    _fft(inp)
+    _ifft(inp)
+    _ifft!(inp)
+    _fftshift(inp)
+    _ifftshift(inp)
+
+Internal backend hooks used by FFTRegGPU algorithms.
+
+These methods default to `AbstractFFTs` behavior and are extended in
+`ext/FFTRegGPUCPUExt.jl` and `ext/FFTRegGPUCUDAExt.jl` so that dispatch follows
+the input array type.
+"""
 _fft(inp::AbstractArray) = fft(inp)
 _ifft(inp::AbstractArray) = ifft(inp)
 _ifft!(inp::AbstractArray) = copyto!(inp, _ifft(inp))
 _fftshift(inp::AbstractArray) = fftshift(inp)
 _ifftshift(inp::AbstractArray) = ifftshift(inp)
+
+"""
+    _scalar_at(inp, idx)
+
+Read a scalar element from `inp[idx]`.
+
+CUDA extensions overload this helper with `@allowscalar` so peak extraction can
+remain explicit and localized.
+"""
 _scalar_at(inp::AbstractArray, idx) = inp[idx]
 
+"""
+    _backend_template(inp)
+
+Return a parent array/container that represents where allocations should happen
+for `inp` (for example the underlying `CuArray` for wrapped views).
+"""
 _backend_template(inp::AbstractArray) = inp
 _backend_template(inp::SubArray) = _backend_template(parent(inp))
 _backend_template(inp::Base.ReshapedArray) = _backend_template(parent(inp))
 _backend_template(inp::Base.PermutedDimsArray) = _backend_template(parent(inp))
 
+"""
+    _to_backend(ref, src)
+
+Allocate a new array with the same backend/container family as `ref`, then copy
+`src` into it.
+
+This is used to keep temporary arrays on the same device as the active
+computation (for example CPU `Array` vs GPU `CuArray`).
+"""
 function _to_backend(ref::AbstractArray, src::AbstractArray)
     tmpl = _backend_template(ref)
     out = similar(tmpl, eltype(src), size(src))
@@ -17,6 +54,14 @@ function _to_backend(ref::AbstractArray, src::AbstractArray)
     out
 end
 
+"""
+    _findmax_abs2_loc(inp, [work])
+
+Return the location of the maximum of `abs2.(inp)`.
+
+If `work` is provided, it must match `size(inp)` and is reused as a scratch
+buffer to avoid allocating `abs2.(inp)`.
+"""
 function _findmax_abs2_loc(inp::AbstractArray{<:Complex}, work::Union{Nothing,AbstractArray{<:Real}}=nothing)
     if work === nothing
         _, loc = findmax(abs2.(inp))
@@ -29,6 +74,16 @@ function _findmax_abs2_loc(inp::AbstractArray{<:Complex}, work::Union{Nothing,Ab
     loc
 end
 
+"""
+    dftups(inp, no, usfac=1, offset=nothing)
+
+Compute an upsampled DFT region by matrix multiplication (Guizar-Sicairos style)
+without zero-padding the full spectrum.
+
+`inp` is typically the Fourier-domain cross-power spectrum. `no` is the output
+size per dimension, `usfac` is the upsampling factor, and `offset` optionally
+sets the center offset (per-dimension) of the sampled DFT window.
+"""
 function dftups(inp::AbstractArray{T,N}, no::Integer, usfac::Int=1, offset=nothing) where {T<:Number,N}
     no > 0 || throw(ArgumentError("no must be positive"))
     usfac > 0 || throw(ArgumentError("usfac must be positive"))
@@ -55,6 +110,20 @@ function dftups(inp::AbstractArray{T,N}, no::Integer, usfac::Int=1, offset=nothi
     permutedims(out, collect(ndims(out):-1:1))
 end
 
+"""
+    dftreg!(img1_f, img2_f, CC; cc_abs2_work=nothing) -> (error, shift, diffphase)
+
+Estimate integer-pixel translation between two 2D images in the Fourier domain.
+
+`img1_f` and `img2_f` must be Fourier transforms of real images of equal size.
+`CC` is a complex work/output buffer with the same size and is overwritten with
+the inverse-FFT cross-correlation field.
+
+Returns:
+- `error`: translation-invariant normalized RMS-like mismatch metric,
+- `shift`: real-valued vector `(dx, dy)` to apply to `img2` to align to `img1`,
+- `diffphase`: global phase difference (radians).
+"""
 function dftreg!(
     img1_f::AbstractMatrix{T1},
     img2_f::AbstractMatrix{T2},
@@ -94,6 +163,19 @@ function dftreg!(
     error, shift, diffphase
 end
 
+"""
+    dftreg_subpix!(img1_f, img2_f, CC2x, up_fac=10; cc2x_abs2_work=nothing)
+        -> (error, shift, diffphase)
+
+Estimate subpixel translation between two 2D Fourier-domain images.
+
+Algorithm:
+1. Build a 2x upsampled cross-correlation grid in `CC2x` for a coarse estimate.
+2. Optionally refine the peak with matrix-multiply DFT (`dftups`) at `up_fac`.
+
+`CC2x` must be size `(2*size(img1_f,1), 2*size(img1_f,2))`. Returned `shift`
+is the translation to apply to `img2` so it aligns with `img1`.
+"""
 function dftreg_subpix!(
     img1_f::AbstractMatrix{T1},
     img2_f::AbstractMatrix{T2},
@@ -174,6 +256,17 @@ function dftreg_subpix!(
     error, shift, diffphase
 end
 
+"""
+    subpix_shift!(out, img_f, N, shift, diffphase) -> out
+
+Apply a subpixel translation and global phase correction directly in Fourier
+space.
+
+`img_f` is the Fourier-domain moving image, `shift` is the translation vector,
+`diffphase` is the global phase correction, and `N` is a real scratch matrix
+matching `size(img_f)` used to accumulate the phase ramp. `out` is overwritten
+with the shifted Fourier-domain image.
+"""
 function subpix_shift!(
     out::AbstractMatrix{<:Complex},
     img_f::AbstractMatrix{<:Complex},
@@ -203,6 +296,12 @@ function subpix_shift!(
     out
 end
 
+"""
+    subpix_shift!(img_f, N, shift, diffphase)
+
+Allocation convenience method for [`subpix_shift!`](@ref) that returns a newly
+allocated Fourier-domain output array.
+"""
 function subpix_shift!(
     img_f::AbstractMatrix{<:Complex},
     N::AbstractMatrix{<:Real},
@@ -213,6 +312,15 @@ function subpix_shift!(
     subpix_shift!(out, img_f, N, shift, diffphase)
 end
 
+"""
+    dftreg_resample!(out, img_f, N, shift, diffphase; work_f=similar(img_f)) -> out
+
+Resample a Fourier-domain moving image into real-space after applying
+translation/phase correction.
+
+This combines [`subpix_shift!`](@ref) with inverse FFT and writes the real part
+to `out`. `work_f` is a complex scratch/output buffer for the shifted spectrum.
+"""
 function dftreg_resample!(
     out::AbstractMatrix{<:Real},
     img_f::AbstractMatrix{<:Complex},
@@ -231,6 +339,12 @@ function dftreg_resample!(
     out
 end
 
+"""
+    dftreg_resample(img_f, N, shift, diffphase; work_f=similar(img_f))
+
+Allocation convenience method for [`dftreg_resample!`](@ref) that returns a new
+real-valued registered image.
+"""
 function dftreg_resample(
     img_f::AbstractMatrix{<:Complex},
     N::AbstractMatrix{<:Real},
@@ -243,6 +357,11 @@ function dftreg_resample(
     dftreg_resample!(out, img_f, N, shift, diffphase; work_f=work_f)
 end
 
+"""
+    dftreg_resample!(img_f, N, shift, diffphase)
+
+Legacy convenience alias equivalent to [`dftreg_resample`](@ref).
+"""
 function dftreg_resample!(
     img_f::AbstractMatrix{<:Complex},
     N::AbstractMatrix{<:Real},
@@ -252,6 +371,22 @@ function dftreg_resample!(
     dftreg_resample(img_f, N, shift, diffphase)
 end
 
+"""
+    reg_stack_translate!(img_stack_reg, img1_f, img2_f, CC2x, N; reg_param=Dict())
+
+Register a 3D stack (`x, y, z`) by translating each plane `z` to align with the
+previous registered plane `z-1`.
+
+The operation is in-place on `img_stack_reg`. `img1_f`, `img2_f`, `CC2x`, and
+`N` are reusable work buffers:
+- `img1_f`, `img2_f`: Fourier-domain work images (`size == size(img_stack_reg[:,:,1])`)
+- `CC2x`: coarse cross-correlation buffer (2x in each planar dimension)
+- `N`: real phase-ramp scratch buffer
+
+If `reg_param[z]` exists, it must contain `(error, shift, diffphase)` and is
+reused instead of recomputing registration for plane `z`. Otherwise the tuple is
+computed and stored.
+"""
 function reg_stack_translate!(
     img_stack_reg::AbstractArray{<:Real,3},
     img1_f::AbstractMatrix{<:Complex},
