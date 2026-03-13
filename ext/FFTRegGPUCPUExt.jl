@@ -1,3 +1,11 @@
+"""
+    FFTRegGPUCPUExt
+
+CPU extension for FFTRegGPU backend hooks.
+
+When `FFTW` is loaded and inputs are `StridedArray`s, FFTRegGPU internal hooks
+dispatch to FFTW and AbstractFFTs shift operations.
+"""
 module FFTRegGPUCPUExt
 
 using FFTRegGPU

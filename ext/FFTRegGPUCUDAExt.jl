@@ -1,3 +1,11 @@
+"""
+    FFTRegGPUCUDAExt
+
+CUDA extension for FFTRegGPU backend hooks.
+
+When `CUDA` is loaded and inputs are `CuArray` (or views over `CuArray`), FFT
+and shift operations dispatch to CUFFT/CUDA implementations.
+"""
 module FFTRegGPUCUDAExt
 
 using FFTRegGPU
