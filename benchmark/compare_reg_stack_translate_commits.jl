@@ -192,53 +192,59 @@ function call_reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf, reg_p
     end
 end
 
-rows = NamedTuple[]
-all_buffers_on_cuda = true
-for (i, (nx, ny, nz)) in enumerate(stack_sizes)
-    rng = MersenneTwister(seed + 100 + i)
-    dims = "$(nx)x$(ny)x$(nz)"
+function run_case_rows(stack_sizes, samples, evals, seed, noise_sigma)
+    rows = NamedTuple[]
+    all_buffers_on_cuda = true
+    for (i, (nx, ny, nz)) in enumerate(stack_sizes)
+        rng = MersenneTwister(seed + 100 + i)
+        dims = "$(nx)x$(ny)x$(nz)"
 
-    stack_template = CUDA.CuArray(make_stack(nx, ny, nz, rng, noise_sigma))
-    stack_work = similar(stack_template)
-    img1_f = CUDA.zeros(ComplexF32, nx, ny)
-    img2_f = CUDA.zeros(ComplexF32, nx, ny)
-    cc2x = CUDA.zeros(ComplexF32, 2 * nx, 2 * ny)
-    nbuf = CUDA.zeros(Float32, nx, ny)
-    reg_param = Dict{Int,Any}()
-    all_buffers_on_cuda &= (
-        stack_template isa CUDA.CuArray &&
-        stack_work isa CUDA.CuArray &&
-        img1_f isa CUDA.CuArray &&
-        img2_f isa CUDA.CuArray &&
-        cc2x isa CUDA.CuArray &&
-        nbuf isa CUDA.CuArray
-    )
+        stack_template = CUDA.CuArray(make_stack(nx, ny, nz, rng, noise_sigma))
+        stack_work = similar(stack_template)
+        img1_f = CUDA.zeros(ComplexF32, nx, ny)
+        img2_f = CUDA.zeros(ComplexF32, nx, ny)
+        cc2x = CUDA.zeros(ComplexF32, 2 * nx, 2 * ny)
+        nbuf = CUDA.zeros(Float32, nx, ny)
+        reg_param = Dict{Int,Any}()
+        all_buffers_on_cuda = all_buffers_on_cuda && (
+            stack_template isa CUDA.CuArray &&
+            stack_work isa CUDA.CuArray &&
+            img1_f isa CUDA.CuArray &&
+            img2_f isa CUDA.CuArray &&
+            cc2x isa CUDA.CuArray &&
+            nbuf isa CUDA.CuArray
+        )
 
-    copyto!(stack_work, stack_template)
-    call_reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf, reg_param)
-    CUDA.synchronize()
-    stack_out = Array(stack_work)
-
-    trial = run(@benchmarkable begin
-        copyto!($stack_work, $stack_template)
-        empty!($reg_param)
-        call_reg_stack_translate!($stack_work, $img1_f, $img2_f, $cc2x, $nbuf, $reg_param)
+        copyto!(stack_work, stack_template)
+        call_reg_stack_translate!(stack_work, img1_f, img2_f, cc2x, nbuf, reg_param)
         CUDA.synchronize()
-    end samples=samples evals=evals)
+        stack_out = Array(stack_work)
 
-    med = BenchmarkTools.median(trial)
-    mn = BenchmarkTools.mean(trial)
-    mnm = BenchmarkTools.minimum(trial)
-    push!(rows, (
-        dims = dims,
-        median_ms = med.time / 1e6,
-        mean_ms = mn.time / 1e6,
-        min_ms = mnm.time / 1e6,
-        memory_bytes = med.memory,
-        allocs = med.allocs,
-        stack_out = stack_out,
-    ))
+        trial = run(@benchmarkable begin
+            copyto!($stack_work, $stack_template)
+            empty!($reg_param)
+            call_reg_stack_translate!($stack_work, $img1_f, $img2_f, $cc2x, $nbuf, $reg_param)
+            CUDA.synchronize()
+        end samples=samples evals=evals)
+
+        med = BenchmarkTools.median(trial)
+        mn = BenchmarkTools.mean(trial)
+        mnm = BenchmarkTools.minimum(trial)
+        push!(rows, (
+            dims = dims,
+            median_ms = med.time / 1e6,
+            mean_ms = mn.time / 1e6,
+            min_ms = mnm.time / 1e6,
+            memory_bytes = med.memory,
+            allocs = med.allocs,
+            stack_out = stack_out,
+        ))
+    end
+
+    return rows, all_buffers_on_cuda
 end
+
+rows, all_buffers_on_cuda = run_case_rows(stack_sizes, samples, evals, seed, noise_sigma)
 
 serialize(
     result_file,
