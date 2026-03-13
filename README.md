@@ -6,6 +6,9 @@ Currently it only supports translation.
 
 
 ## Usage and example  
+![before vs after registration showing a slice (xy)](docs/img/before_after_xy_slice.png)
+![before vs after registration showing xz MIP for a volume](docs/img/before_after_xz_MIP.png)
+
 ### Backend setup
 Load FFTRegGPU with the backend package you want to use:
 
